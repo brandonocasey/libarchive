@@ -361,6 +361,55 @@ DEFINE_TEST(test_write_format_zip_compression_zstd)
 	dumpfile("constructed.zip", buff, used);
 
 	verify_zstd_contents(buff, used);
+
+	/* Create new ZIP archive in memory without padding. */
+	/* Set compression-level before selecting zstd to verify option order
+	 * does not drop high zstd levels. */
+	assert((a = archive_write_new()) != NULL);
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_format_zip(a));
+	assertEqualIntA(a, ARCHIVE_OK,
+	    archive_write_set_options(a, "zip:compression-level=22"));
+	assertEqualIntA(a, ARCHIVE_OK,
+	    archive_write_set_options(a, "zip:compression=zstd"));
+	assertEqualIntA(a, ARCHIVE_OK,
+	    archive_write_set_options(a, "zip:experimental"));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_add_filter_none(a));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_bytes_per_block(a, 1));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_bytes_in_last_block(a, 1));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_open_memory(a, buff, sizeof(buff), &used));
+
+	verify_write_zstd(a);
+
+	/* Close the archive. */
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_close(a));
+	assertEqualInt(ARCHIVE_OK, archive_write_free(a));
+	dumpfile("constructed.zip", buff, used);
+
+	verify_zstd_contents(buff, used);
+
+	/* Create new ZIP archive in memory without padding. */
+	/* Verify that compression-level=0 keeps zstd selected and requests its
+	 * default level instead of switching to store. */
+	assert((a = archive_write_new()) != NULL);
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_format_zip(a));
+	assertEqualIntA(a, ARCHIVE_OK,
+	    archive_write_set_options(a, "zip:compression=zstd"));
+	assertEqualIntA(a, ARCHIVE_OK,
+	    archive_write_set_options(a, "zip:compression-level=0"));
+	assertEqualIntA(a, ARCHIVE_OK,
+	    archive_write_set_options(a, "zip:experimental"));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_add_filter_none(a));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_bytes_per_block(a, 1));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_bytes_in_last_block(a, 1));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_open_memory(a, buff, sizeof(buff), &used));
+
+	verify_write_zstd(a);
+
+	/* Close the archive. */
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_close(a));
+	assertEqualInt(ARCHIVE_OK, archive_write_free(a));
+	dumpfile("constructed.zip", buff, used);
+
+	verify_zstd_contents(buff, used);
 #endif /* HAVE_ZSTD_H */
 }
-
