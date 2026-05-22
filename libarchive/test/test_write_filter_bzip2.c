@@ -130,6 +130,18 @@ DEFINE_TEST(test_write_filter_bzip2)
 	    NULL, "compression-level", "99"));
 	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_filter_option(a,
 	    NULL, "compression-level", "9"));
+	assertEqualIntA(a, ARCHIVE_FAILED, archive_write_set_filter_option(a,
+	    NULL, "threads", "-1"));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_filter_option(a,
+	    NULL, "threads", "0"));
+#if defined(HAVE_PTHREAD_H)
+	if (!use_prog)
+		assertEqualIntA(a, ARCHIVE_OK, archive_write_set_filter_option(a,
+		    NULL, "threads", "2"));
+	else
+#endif
+		assertEqualIntA(a, ARCHIVE_FAILED, archive_write_set_filter_option(a,
+		    NULL, "threads", "2"));
 	assertEqualIntA(a, ARCHIVE_OK,
 	    archive_write_open_memory(a, buff, buffsize, &used2));
 	for (i = 0; i < 999; i++) {
@@ -267,6 +279,20 @@ DEFINE_TEST(test_write_filter_bzip2)
 	    archive_write_open_memory(a, buff, buffsize, &used2));
 	assertEqualInt(ARCHIVE_OK, archive_write_close(a));
 	assertEqualInt(ARCHIVE_OK, archive_write_free(a));
+
+#if defined(HAVE_PTHREAD_H)
+	if (!use_prog) {
+		assert((a = archive_write_new()) != NULL);
+		assertEqualIntA(a, ARCHIVE_OK,
+		    archive_write_add_filter_bzip2(a));
+		assertEqualIntA(a, ARCHIVE_OK, archive_write_set_filter_option(a,
+		    NULL, "threads", "2"));
+		assertEqualIntA(a, ARCHIVE_OK,
+		    archive_write_open_memory(a, buff, buffsize, &used2));
+		assertEqualInt(ARCHIVE_OK, archive_write_close(a));
+		assertEqualInt(ARCHIVE_OK, archive_write_free(a));
+	}
+#endif
 
 	/*
 	 * Test behavior after a fatal error (triggered by giving
