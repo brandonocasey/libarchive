@@ -178,7 +178,10 @@ struct zip {
 	struct archive_string_conv *opt_sconv;
 	struct archive_string_conv *sconv_default;
 	enum compression requested_compression;
-	short compression_level;
+	int compression_level;
+#if defined(HAVE_ZSTD_H) && HAVE_ZSTD_compressStream
+	int zstd_compression_level;
+#endif
 	int init_default_conversion;
 	enum encryption encryption_type;
 	short threads;
@@ -335,6 +338,15 @@ fake_crc32(unsigned long crc, const void *buff, size_t len)
 	return 0;
 }
 
+static void
+zip_reset_compression_levels(struct zip *zip)
+{
+	zip->compression_level = 6;
+#if defined(HAVE_ZSTD_H) && HAVE_ZSTD_compressStream
+	zip->zstd_compression_level = ZSTD_CLEVEL_DEFAULT;
+#endif
+}
+
 static int
 archive_write_zip_options(struct archive_write *a, const char *key,
     const char *val)
@@ -398,19 +410,51 @@ archive_write_zip_options(struct archive_write *a, const char *key,
 		return (ret);
 	} else if (strcmp(key, "compression-level") == 0) {
 		char *endptr;
-		unsigned long v;
+		long lvl;
 
 		if (val == NULL)
 			return (ARCHIVE_WARN);
 		errno = 0;
-		v = strtoul(val, &endptr, 10);
-		if (errno != 0 || *endptr != '\0' || v > 9) {
-			zip->compression_level = 6; // set to default
+		lvl = strtol(val, &endptr, 10);
+		if (errno != 0 || *endptr != '\0') {
+			zip_reset_compression_levels(zip);
 			return (ARCHIVE_WARN);
 		}
-		zip->compression_level = (short)v;
+
+#if defined(HAVE_ZSTD_H) && HAVE_ZSTD_compressStream
+		if (zip->requested_compression == COMPRESSION_ZSTD) {
+			if (lvl < ZSTD_minCLevel() || lvl > ZSTD_maxCLevel()) {
+				zip_reset_compression_levels(zip);
+				return (ARCHIVE_WARN);
+			}
+			zip->zstd_compression_level = (int)lvl;
+			return (ARCHIVE_OK);
+		}
+#endif
+
+		if (lvl < 0 || lvl > 9) {
+#if defined(HAVE_ZSTD_H) && HAVE_ZSTD_compressStream
+			if (zip->requested_compression == COMPRESSION_UNSPECIFIED &&
+			    lvl >= ZSTD_minCLevel() && lvl <= ZSTD_maxCLevel()) {
+				zip->requested_compression = COMPRESSION_ZSTD;
+				zip->zstd_compression_level = (int)lvl;
+				return (ARCHIVE_OK);
+			}
+#endif
+			zip_reset_compression_levels(zip);
+			return (ARCHIVE_WARN);
+		}
+
+		zip->compression_level = (int)lvl;
+#if defined(HAVE_ZSTD_H) && HAVE_ZSTD_compressStream
+		zip->zstd_compression_level = (int)lvl;
+#endif
 
 		if (zip->compression_level == 0) {
+#if defined(HAVE_ZSTD_H) && HAVE_ZSTD_compressStream
+			if (zip->requested_compression == COMPRESSION_ZSTD)
+				return (ARCHIVE_OK);
+#endif
 			zip->requested_compression = COMPRESSION_STORE;
 			return ARCHIVE_OK;
 		} else {
@@ -743,7 +787,7 @@ archive_write_set_format_zip(struct archive *_a)
 	zip->requested_compression = COMPRESSION_UNSPECIFIED;
 	/* Following the 7-zip write support's lead, setting the default
 	 * compression level explicitly to 6 no matter what. */
-	zip->compression_level = 6;
+	zip_reset_compression_levels(zip);
 	/* Following the xar write support's lead, the default number of
 	 * threads is 1 (i.e. the xz compression, the only one caring about
 	 * that, not being multi-threaded even if the multi-threaded encoder
@@ -1401,15 +1445,10 @@ archive_write_zip_header(struct archive_write *a, struct archive_entry *entry)
 #endif
 #if defined(HAVE_ZSTD_H) && HAVE_ZSTD_compressStream
 	case COMPRESSION_ZSTD:
-		{/* Libzstd, contrary to many compression libraries, doesn't use
-		 * zlib's 0 to 9 scale and its negative scale is way bigger than
-		 * its positive one. So setting 1 as the lowest allowed compression
-		 * level and rescaling to 2 to 9 to libzstd's positive scale. */
-		int zstd_compression_level = zip->compression_level == 1
-			? ZSTD_minCLevel() // ZSTD_minCLevel is negative !
-			: (zip->compression_level - 1) * ZSTD_maxCLevel() / 8;
+		{
 		zip->stream.zstd.context = ZSTD_createCStream();
-		size_t zret = ZSTD_initCStream(zip->stream.zstd.context, zstd_compression_level);
+		size_t zret = ZSTD_initCStream(zip->stream.zstd.context,
+		    zip->zstd_compression_level);
 		if (ZSTD_isError(zret)) {
 			archive_set_error(&a->archive, ENOMEM,
 			    "Can't init zstd compressor");

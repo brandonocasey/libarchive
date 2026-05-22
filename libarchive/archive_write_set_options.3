@@ -667,17 +667,19 @@ and other special entries.
 .It Cm compression-level
 The value is interpreted as a decimal integer specifying the
 compression level.
-Values between 0 and 9 are supported.
-A compression level of 0 switches the compression method to
-.Dq store ,
-other values will enable
-.Dq deflate ,
-.Dq bzip2 ,
-.Dq lzma ,
-or
+Values between 0 and 9 are supported for non-zstd methods.
+When
 .Dq zstd
-compression (in order of priority, depending on what libraries 
-are linked) with the given level.
+compression is selected, values between
+.Fn ZSTD_minCLevel
+and
+.Fn ZSTD_maxCLevel
+are supported.
+A compression level of 0 switches the compression method to
+.Dq store
+unless
+.Dq zstd
+compression is selected, in which case level 0 requests zstd's default level.
 .It Cm threads
 The value is interpreted as a decimal integer specifying the
 number of threads to use for compression.
