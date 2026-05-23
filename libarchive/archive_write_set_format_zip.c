@@ -73,6 +73,7 @@
 #include "archive_time_private.h"
 #include "archive_write_private.h"
 #include "archive_write_set_format_private.h"
+#include "archive_zlib_private.h"
 
 #ifndef HAVE_ZLIB_H
 #include "archive_crc32.h"
@@ -1476,6 +1477,7 @@ archive_write_zip_header(struct archive_write *a, struct archive_entry *entry)
 		zip->stream.deflate.opaque = Z_NULL;
 		zip->stream.deflate.next_out = zip->buf;
 		zip->stream.deflate.avail_out = (uInt)zip->len_buf;
+		archive_zlib_set_allocators(&zip->stream.deflate);
 		if (deflateInit2(&zip->stream.deflate, zip->compression_level,
 		    Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
 			archive_set_error(&a->archive, ENOMEM,

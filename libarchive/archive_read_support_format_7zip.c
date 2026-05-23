@@ -58,6 +58,7 @@
 #include "archive_read_private.h"
 #include "archive_time_private.h"
 #include "archive_endian.h"
+#include "archive_zlib_private.h"
 
 #ifndef HAVE_ZLIB_H
 #include "archive_crc32.h"
@@ -1576,9 +1577,11 @@ init_decompression(struct archive_read *a, struct _7zip *zip,
 #ifdef HAVE_ZLIB_H
 		if (zip->stream_valid)
 			r = inflateReset(&(zip->stream));
-		else
+		else {
+			archive_zlib_set_allocators(&(zip->stream));
 			r = inflateInit2(&(zip->stream),
 			    -15 /* Don't check for zlib header */);
+		}
 		if (r != Z_OK) {
 			archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
 			    "Couldn't initialize zlib stream");

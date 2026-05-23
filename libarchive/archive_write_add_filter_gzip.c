@@ -43,6 +43,7 @@
 #include "archive_private.h"
 #include "archive_string.h"
 #include "archive_write_private.h"
+#include "archive_zlib_private.h"
 
 #if ARCHIVE_VERSION_NUMBER < 4000000
 int
@@ -278,6 +279,7 @@ archive_compressor_gzip_open(struct archive_write_filter *f)
 	f->write = archive_compressor_gzip_write;
 
 	/* Initialize compression library. */
+	archive_zlib_set_allocators(&(data->stream));
 	init_success = deflateInit2(&(data->stream),
 	    data->compression_level,
 	    Z_DEFLATED,
