@@ -73,6 +73,7 @@
 #include "archive_read_private.h"
 #include "archive_time_private.h"
 #include "archive_ppmd8_private.h"
+#include "archive_zlib_private.h"
 
 #ifndef HAVE_ZLIB_H
 #include "archive_crc32.h"
@@ -2868,9 +2869,11 @@ zip_deflate_init(struct archive_read *a, struct zip *zip)
 	if (!zip->decompress_init) {
 		if (zip->stream_valid)
 			r = inflateReset(&zip->stream);
-		else
+		else {
+			archive_zlib_set_allocators(&zip->stream);
 			r = inflateInit2(&zip->stream,
 			    -15 /* Don't check for zlib header */);
+		}
 		if (r != Z_OK) {
 			archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
 			    "Can't initialize ZIP decompression");

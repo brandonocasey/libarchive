@@ -51,6 +51,7 @@
 #include "archive_private.h"
 #include "archive_read_private.h"
 #include "archive_string.h"
+#include "archive_zlib_private.h"
 
 /*
  * An overview of ISO 9660 format:
@@ -1660,8 +1661,10 @@ zisofs_read_data(struct archive_read *a,
 		/* Initialize compression library for new block. */
 		if (zisofs->stream_valid)
 			r = inflateReset(&zisofs->stream);
-		else
+		else {
+			archive_zlib_set_allocators(&zisofs->stream);
 			r = inflateInit(&zisofs->stream);
+		}
 		if (r != Z_OK) {
 			archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
 			    "Can't initialize zisofs decompression");

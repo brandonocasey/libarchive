@@ -47,6 +47,7 @@
 #include "archive_private.h"
 #include "archive_read_private.h"
 #include "archive_endian.h"
+#include "archive_zlib_private.h"
 
 
 /*
@@ -1560,9 +1561,11 @@ cab_read_ahead_cfdata_deflate(struct archive_read *a, ssize_t *avail)
 		cab->stream.total_out = 0;
 		if (cab->stream_valid)
 			r = inflateReset(&cab->stream);
-		else
+		else {
+			archive_zlib_set_allocators(&cab->stream);
 			r = inflateInit2(&cab->stream,
 			    -15 /* Don't check for zlib header */);
+		}
 		if (r != Z_OK) {
 			archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
 			    "Can't initialize deflate decompression");
