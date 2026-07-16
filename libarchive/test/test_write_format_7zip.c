@@ -526,6 +526,96 @@ test_basic2(const char *compression_type)
 	free(buff);
 }
 
+static void
+test_lzma2_threads(void)
+{
+	struct archive_entry *ae;
+	struct archive *a;
+	size_t used;
+	const size_t block_size = 1024 * 1024;
+	const size_t blocks = 3;
+	size_t buffsize = 4 * 1024 * 1024;
+	char *buff;
+	char *data;
+	char *filedata;
+	size_t i;
+
+	buff = malloc(buffsize);
+	data = malloc(block_size);
+	filedata = malloc(block_size);
+	assert(buff != NULL);
+	assert(data != NULL);
+	assert(filedata != NULL);
+	for (i = 0; i < block_size; i++)
+		data[i] = (char)(i & 0xff);
+
+	/* Create a new archive in memory. */
+	assert((a = archive_write_new()) != NULL);
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_set_format_7zip(a));
+	if (ARCHIVE_OK != archive_write_set_format_option(a, "7zip",
+	    "compression", "lzma2")) {
+		skipping("lzma2 writing not fully supported on this platform");
+		assertEqualInt(ARCHIVE_OK, archive_write_free(a));
+		free(filedata);
+		free(data);
+		free(buff);
+		return;
+	}
+	assertEqualIntA(a, ARCHIVE_OK,
+	    archive_write_set_format_option(a, "7zip",
+	    "compression-level", "0"));
+	assertEqualIntA(a, ARCHIVE_OK,
+	    archive_write_set_format_option(a, "7zip", "threads", "2"));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_add_filter_none(a));
+	assertEqualIntA(a, ARCHIVE_OK,
+	    archive_write_open_memory(a, buff, buffsize, &used));
+
+	assert((ae = archive_entry_new()) != NULL);
+	archive_entry_copy_pathname(ae, "file");
+	archive_entry_set_mode(ae, AE_IFREG | 0644);
+	archive_entry_set_size(ae, (int64_t)(block_size * blocks));
+	assertEqualIntA(a, ARCHIVE_OK, archive_write_header(a, ae));
+	archive_entry_free(ae);
+	for (i = 0; i < blocks; i++)
+		assertEqualInt((ssize_t)block_size,
+		    archive_write_data(a, data, block_size));
+
+	assertEqualInt(ARCHIVE_OK, archive_write_close(a));
+	assertEqualInt(ARCHIVE_OK, archive_write_free(a));
+
+	assert((a = archive_read_new()) != NULL);
+	assertEqualIntA(a, ARCHIVE_OK, archive_read_support_format_all(a));
+	assertEqualIntA(a, ARCHIVE_OK, archive_read_support_filter_all(a));
+	assertEqualIntA(a, ARCHIVE_OK, read_open_memory_seek(a, buff, used, 7));
+
+	assertEqualIntA(a, ARCHIVE_OK, archive_read_next_header(a, &ae));
+	assertEqualString("file", archive_entry_pathname(ae));
+	assertEqualInt((int64_t)(block_size * blocks), archive_entry_size(ae));
+	for (i = 0; i < block_size * blocks;) {
+		ssize_t bytes = archive_read_data(a, filedata, block_size);
+		size_t compared = 0;
+
+		assert(bytes > 0);
+		while (compared < (size_t)bytes) {
+			size_t data_offset = (i + compared) % block_size;
+			size_t avail = block_size - data_offset;
+			if (avail > (size_t)bytes - compared)
+				avail = (size_t)bytes - compared;
+			assertEqualMem(filedata + compared, data + data_offset,
+			    avail);
+			compared += avail;
+		}
+		i += (size_t)bytes;
+	}
+	assertEqualIntA(a, ARCHIVE_EOF, archive_read_next_header(a, &ae));
+	assertEqualInt(ARCHIVE_OK, archive_read_close(a));
+	assertEqualInt(ARCHIVE_OK, archive_read_free(a));
+
+	free(filedata);
+	free(data);
+	free(buff);
+}
+
 DEFINE_TEST(test_write_format_7zip)
 {
 	/* Test that making a 7-Zip archive file by default compression
@@ -563,6 +653,12 @@ DEFINE_TEST(test_write_format_7zip_basic_lzma2)
 {
 	/* Test that making a 7-Zip archive file with lzma2 compression. */
 	test_basic("lzma2");
+}
+
+DEFINE_TEST(test_write_format_7zip_lzma2_threads)
+{
+	/* Test that lzma2 7-Zip archives honor the threads option. */
+	test_lzma2_threads();
 }
 
 DEFINE_TEST(test_write_format_7zip_basic_ppmd)
